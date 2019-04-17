@@ -1,3 +1,6 @@
+import os
+import sys
+from types import ModuleType
 from argparse import ArgumentParser
 from inspect import signature, BoundArguments
 from functools import wraps
@@ -8,12 +11,13 @@ logger = logging.getLogger(__package__)
 
 class Task(Future):
 
-    def __init__(self, func, ba, format, retry):
+    def __init__(self, func, ba, format, retry, level=None):
         super().__init__()
         self.func = func
         self.ba = ba
         self.format = format
         self.retry = retry
+        self.level = level or logging.INFO
 
     def __str__(self):
         ba = BoundArguments(self.ba._signature, self.ba.arguments)
@@ -30,7 +34,7 @@ class Task(Future):
         )
 
     async def __run__(self, retry, level):
-        logger.log(logging.INFO, "%s%s%s", level, ' ' if level else '', self)
+        logger.log(self.level, "%s%s%s", level, ' ' if level else '', self)
         subtask = None
         number = 0
         try:
@@ -81,13 +85,13 @@ class Task(Future):
             return e.value
 
 
-def task(format=None, retry=False):
+def task(format=None, retry=False, level=None):
     def decorator(func):
         sig = signature(func)
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            return Task(func, sig.bind(*args, **kwargs), format, retry)
+            return Task(func, sig.bind(*args, **kwargs), format, retry, level)
 
         return wrapper
     return decorator
@@ -104,6 +108,9 @@ class Command:
         self._parser = parser
         self._subparsers = parser.add_subparsers(dest="COMMAND")
         self._commands = {}
+        self.add_argument("--timestamps", action="store_true", default=False, help="show timestamp on each log line")
+        self.add_argument("--debug", action="store_true", default=False, help="turn on debug logging")
+        self.add_argument("--retry", type=int, help="max number of retries")
         self(self.help)
 
     def add_argument(self, *args, **kwargs):
@@ -136,3 +143,38 @@ class Command:
     async def help(self):
         """print help message"""
         self._parser.print_help()
+
+    def run(self, init_mod=None, argv=None):
+        mod = ModuleType("__miasma__")
+        mod.command = self
+        mod.Argument = Argument
+        mod.task = task
+
+        logging.captureWarnings(True)
+        logger = logging.getLogger('')
+        logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler()
+        logger.addHandler(handler)
+
+        @task(self._parser.description)
+        async def main():
+            if init_mod is not None:
+                cmd, args = await init_mod(mod, argv or sys.argv[1:])
+            else:
+                cmd, args = self.parse(argv)
+
+            retry = args.retry
+            if retry is None:
+                if 'MAX_RETRY' in os.environ:
+                    retry = int(os.environ['MAX_RETRY'])
+                else:
+                    retry = getattr(mod, 'MAX_RETRY', 3)
+
+            if args.timestamps:
+                formatter = logging.Formatter(fmt='{asctime} {message}',datefmt='%Y-%m-%d %H:%M:%S', style='{')
+                handler.setFormatter(formatter)
+            if args.debug:
+                logger.setLevel(logging.DEBUG)
+            await cmd(args)(retry=retry)
+
+        main().run(retry=3)
