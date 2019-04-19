@@ -11,13 +11,12 @@ logger = logging.getLogger(__package__)
 
 class Task(Future):
 
-    def __init__(self, func, ba, format, retry, level=None):
+    def __init__(self, func, ba, format, retry):
         super().__init__()
         self.func = func
         self.ba = ba
         self.format = format
         self.retry = retry
-        self.level = level or logging.INFO
 
     def __str__(self):
         ba = BoundArguments(self.ba._signature, self.ba.arguments)
@@ -34,7 +33,7 @@ class Task(Future):
         )
 
     async def __run__(self, retry, level):
-        logger.log(self.level, "%s%s%s", level, ' ' if level else '', self)
+        logger.log(logging.WARNING, "%.0s %s %s", "\u23F5", level, self)
         subtask = None
         number = 0
         try:
@@ -51,7 +50,7 @@ class Task(Future):
                     subtask = coro.send(result)
                 number += 1
         except StopIteration as e:
-            logger.log(logging.DEBUG, "%s%sDONE %s", level, ' ' if level else '', self)
+            logger.log(logging.INFO, "%.0s %s %s", "DONE", level, self)
             return e.value
 
     async def __call__(self, retry=0, level=""):
@@ -61,7 +60,7 @@ class Task(Future):
             try:
                 self.set_result(await self.__run__(retry, f"{level}({tried})"))
             except Exception as e:
-                logger.exception("%s FAILED %s", f"{level}({tried})", self)
+                logger.exception("%.0s %s %s", "FAIL", f"{level}({tried})", self)
                 continue
             else:
                 return self.result()
@@ -72,7 +71,7 @@ class Task(Future):
         try:
             self.set_result(await self.__run__(retry, level))
         except Exception as e:
-            logger.log(logging.ERROR, "%s%sFAILED %s", level, ' ' if level else '', self)
+            logger.log(logging.ERROR, "%.0s %s %s", "FAIL", level, self)
             self.set_exception(e)
 
         return self.result()
@@ -85,13 +84,13 @@ class Task(Future):
             return e.value
 
 
-def task(format=None, retry=False, level=None):
+def task(format=None, retry=False):
     def decorator(func):
         sig = signature(func)
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            return Task(func, sig.bind(*args, **kwargs), format, retry, level)
+            return Task(func, sig.bind(*args, **kwargs), format, retry)
 
         return wrapper
     return decorator
@@ -99,6 +98,31 @@ def task(format=None, retry=False, level=None):
 
 def Argument(*args, **kwargs):
     return lambda dest: lambda parser: parser.add_argument(*args, dest=dest, **kwargs)
+
+
+def logging_color(level):
+    if level >= logging.CRITICAL:
+        return "31"
+    elif level >= logging.ERROR:
+        return "91"
+    elif level >= logging.WARNING:
+        return "33"
+    elif level >= logging.INFO:
+        return "92"
+    else:
+        return "94"
+
+
+class Formatter(logging.Formatter):
+
+    def formatMessage(self, record):
+        if record.msg.startswith("%.0s"):
+            if sys.stderr.isatty():
+                color = logging_color(record.levelno)
+                record.message = "\x1b[1m\x1b[{}m{:>12}\x1b[39m\x1b[0m{}".format(color, record.args[0], record.message)
+            else:
+                record.message = "{}{}".format(record.args[0], record.message)
+        return super().formatMessage(record)
 
 
 class Command:
@@ -111,6 +135,7 @@ class Command:
         self.add_argument("--timestamps", action="store_true", default=False, help="show timestamp on each log line")
         self.add_argument("--debug", action="store_true", default=False, help="turn on debug logging")
         self.add_argument("--retry", type=int, help="max number of retries")
+        self.add_argument("-v", "--verbose", action="store_true", default=False, help="verbose output")
         self(self.help)
 
     def add_argument(self, *args, **kwargs):
@@ -149,10 +174,11 @@ class Command:
         mod.command = self
         mod.Argument = Argument
         mod.task = task
+        mod.VERBOSE = os.environ.get("VERBOSE", "0").lower() in ("1", "on", "yes", "true")
 
         logging.captureWarnings(True)
         logger = logging.getLogger('')
-        logger.setLevel(logging.INFO)
+        logger.setLevel(logging.INFO if mod.VERBOSE else logging.WARNING)
         handler = logging.StreamHandler()
         logger.addHandler(handler)
 
@@ -170,9 +196,13 @@ class Command:
                 else:
                     retry = getattr(mod, 'MAX_RETRY', 3)
 
+            formatter = Formatter()
             if args.timestamps:
-                formatter = logging.Formatter(fmt='{asctime} {message}',datefmt='%Y-%m-%d %H:%M:%S', style='{')
-                handler.setFormatter(formatter)
+                formatter = Formatter(fmt='{asctime} {message}', style='{')
+            handler.setFormatter(formatter)
+            if args.verbose:
+                mod.VERBOSE = True
+                logger.setLevel(logging.INFO)
             if args.debug:
                 logger.setLevel(logging.DEBUG)
             await cmd(args)(retry=retry)
