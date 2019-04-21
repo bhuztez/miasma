@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
     name = 'miasma',
-    version = '0.0',
+    version = '0.1.0',
 
     url = 'https://github.com/bhuztez/miasma',
     description = '',
@@ -23,5 +23,4 @@ setup(
     author_email = 'bhuztez@gmail.com',
 
     packages = ['miasma'],
-    zip_safe = False,
 )
