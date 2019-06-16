@@ -34,16 +34,13 @@ def task(format=None, retry=False):
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            runner = _runner.get(None)
-            if runner is None:
-                return func(*args, **kwargs)
-            else:
-                try:
-                    return runner.run(Task(func, sig.bind(*args, **kwargs), format, retry))
-                except Exception as e:
-                    # e = e.with_traceback(e.__traceback__.tb_next.tb_next.tb_next)
-                    e = e.with_traceback(None)
-                    raise e
+            runner = _runner.get()
+            try:
+                return runner.run(Task(func, sig.bind(*args, **kwargs), format, retry))
+            except Exception as e:
+                # e = e.with_traceback(e.__traceback__.tb_next.tb_next.tb_next)
+                e = e.with_traceback(None)
+                raise e
 
         return wrapper
 

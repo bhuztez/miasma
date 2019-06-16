@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name = 'miasma',
-    version = '0.1.2',
+    version = '0.1.3',
 
     url = 'https://github.com/bhuztez/miasma',
     description = '',

@@ -124,17 +124,25 @@ class Runner:
             self.print_status()
 
     def print_status_line(self, run, status=None, end="\n"):
-        w, _ = get_terminal_size()
         if status is None:
             status = '  '
         else:
-            status = '\x1b[92mOK\x1b[39m' if status else '\x1b[31m!!\x1b[39m'
+            if sys.__stderr__.isatty():
+                status = '\x1b[92mOK\x1b[39m' if status else '\x1b[31m!!\x1b[39m'
+            else:
+                status = 'OK' if status else '!!'
 
         run = str(run)
-        print(f"[ {status} ] {run:{w-7}.{w-7}}", end=end, file=sys.__stderr__)
+        if sys.__stderr__.isatty():
+            w, _ = get_terminal_size()
+            print(f"[ {status} ] {run:{w-7}.{w-7}}", end=end, file=sys.__stderr__)
+        else:
+            print(f"[ {status} ] {run}", end=end, file=sys.__stderr__)
 
     def print_status(self):
         if self._current is None:
+            return
+        if not sys.__stderr__.isatty():
             return
 
         level = self._current.level
@@ -151,4 +159,7 @@ class Runner:
     def clear_status(self):
         if self._current is None:
             return
+        if not sys.__stderr__.isatty():
+            return
+
         print("\x1b[J", end='', file=sys.__stderr__, flush=True)

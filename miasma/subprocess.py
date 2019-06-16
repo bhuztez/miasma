@@ -66,12 +66,15 @@ class Subprocess(Process):
 
 
 def run(args, executable=None, stdin=None, stdout=None, stderr=None, input=None, capture_output=False, check=False, shell=False, **kwargs):
-    runner = _runner.get(None)
+    runner = _runner.get()
 
-    if runner is None or (stdin is None and input is None):
+    if stdin is None and input is None:
         runner.clear_status()
         try:
-            return _run(args, executable=executable, stdout=stdout, stderr=stderr, capture_output=capture_output, check=check, shell=shell, **kwargs)
+            if capture_output:
+                return _run(args, executable=executable, capture_output=True, check=check, shell=shell, **kwargs)
+            else:
+                return _run(args, executable=executable, stdout=stdout, stderr=stderr, check=check, shell=shell, **kwargs)
         finally:
             runner.print_status()
 
