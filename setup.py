@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
     name = 'miasma',
-    version = '0.1.0',
+    version = '0.1.1',
 
     url = 'https://github.com/bhuztez/miasma',
     description = '',
@@ -15,7 +15,7 @@ setup(
         "Environment :: Console",
         "License :: OSI Approved :: BSD License",
         "Operating System :: POSIX :: Linux",
-        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3 :: Only",
     ],
 
