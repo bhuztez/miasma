@@ -37,7 +37,7 @@ class OutputReader:
 
 class CaptureOutputProtocol(SubprocessStreamProtocol):
 
-    def __init__(self, stdin, stdout, stderr, limit, loop):
+    def __init__(self, stdout, stderr, limit, loop):
         super().__init__(limit, loop)
         self._stdout = stdout
         self._stderr = stderr
@@ -84,16 +84,16 @@ def run(args, executable=None, stdin=None, stdout=None, stderr=None, input=None,
 
     loop = get_event_loop()
 
-    factory = lambda: CaptureOutputProtocol(stdin, stdout, stderr, limit=_DEFAULT_LIMIT, loop=loop)
+    factory = lambda: CaptureOutputProtocol(stdout, stderr, limit=_DEFAULT_LIMIT, loop=loop)
 
     if shell:
+        executable = None
         creator = lambda **kwargs: loop.subprocess_shell(factory, quote_argv(args), **kwargs)
     else:
         if executable is None:
             executable = which(args[0])
             args = args[1:]
         creator = lambda **kwargs: loop.subprocess_exec(factory, executable, *args, **kwargs)
-        args = [executable] + list(args)
 
     transport, protocol = run_until_complete(loop, creator(stdin=stdin, stdout=stdout or PIPE, stderr=PIPE if stderr in (None, STDOUT) else stderr, **kwargs))
     p = Subprocess(transport, protocol, loop)
@@ -105,6 +105,8 @@ def run(args, executable=None, stdin=None, stdout=None, stderr=None, input=None,
         raise
 
     retcode = p.returncode
+    if executable is not None:
+        args = [executable] + list(args)
     if check and retcode:
         raise CalledProcessError(retcode, quote_argv(args), output=stdout, stderr=stderr)
     return CompletedProcess(args, retcode, stdout, stderr)
